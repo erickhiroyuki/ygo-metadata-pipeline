@@ -1,0 +1,132 @@
+name: YGO Pipeline Sync
+
+on:
+  workflow_dispatch:
+    inputs:
+      command:
+        description: 'Command to run'
+        required: true
+        type: choice
+        options:
+          - sync-cards
+          - sync-images
+        default: sync-cards
+      
+      cardset:
+        description: '[Cards] Card set name to sync (e.g., "Justice Hunters"). Leave empty for all cards.'
+        required: false
+        type: string
+        default: ''
+      
+      skip_translations:
+        description: '[Cards] Skip syncing translations'
+        required: false
+        type: boolean
+        default: false
+      
+      force_upload:
+        description: '[Images] Force re-upload of all images (even if they exist in S3)'
+        required: false
+        type: boolean
+        default: false
+      
+      limit:
+        description: '[Images] Limit number of cards to process (for testing)'
+        required: false
+        type: string
+        default: ''
+      
+      workers:
+        description: '[Images] Number of parallel workers'
+        required: false
+        type: string
+        default: '10'
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Build arguments for sync-cards
+        if: ${{ inputs.command == 'sync-cards' }}
+        id: cards_args
+        run: |
+          ARGS=""
+          if [ -n "${{ inputs.cardset }}" ]; then
+            ARGS="$ARGS --cardset '${{ inputs.cardset }}'"
+          fi
+          if [ "${{ inputs.skip_translations }}" == "true" ]; then
+            ARGS="$ARGS --skip-translations"
+          fi
+          echo "args=$ARGS" >> $GITHUB_OUTPUT
+
+      - name: Build arguments for sync-images
+        if: ${{ inputs.command == 'sync-images' }}
+        id: images_args
+        run: |
+          ARGS=""
+          if [ "${{ inputs.force_upload }}" == "true" ]; then
+            ARGS="$ARGS --force"
+          fi
+          if [ -n "${{ inputs.limit }}" ]; then
+            ARGS="$ARGS --limit ${{ inputs.limit }}"
+          fi
+          if [ -n "${{ inputs.workers }}" ]; then
+            ARGS="$ARGS --workers ${{ inputs.workers }}"
+          fi
+          echo "args=$ARGS" >> $GITHUB_OUTPUT
+
+      - name: Run sync-cards
+        if: ${{ inputs.command == 'sync-cards' }}
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          SUPABASE_DB_KEY: ${{ secrets.SUPABASE_DB_KEY }}
+        run: |
+          echo "Running: uv run main.py sync-cards ${{ steps.cards_args.outputs.args }}"
+          eval "uv run main.py sync-cards ${{ steps.cards_args.outputs.args }}"
+
+      - name: Run sync-images
+        if: ${{ inputs.command == 'sync-images' }}
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          SUPABASE_DB_KEY: ${{ secrets.SUPABASE_DB_KEY }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          AWS_BUCKET_NAME: ${{ secrets.AWS_BUCKET_NAME }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: |
+          echo "Running: uv run main.py sync-images ${{ steps.images_args.outputs.args }}"
+          eval "uv run main.py sync-images ${{ steps.images_args.outputs.args }}"
+
+      - name: Summary
+        run: |
+          echo "## ✅ Sync Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Command:** \`${{ inputs.command }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ inputs.command }}" == "sync-cards" ]; then
+            echo "### Parameters" >> $GITHUB_STEP_SUMMARY
+            echo "- **Card Set:** ${{ inputs.cardset || 'All cards' }}" >> $GITHUB_STEP_SUMMARY
+            echo "- **Skip Translations:** ${{ inputs.skip_translations }}" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### Parameters" >> $GITHUB_STEP_SUMMARY
+            echo "- **Force Upload:** ${{ inputs.force_upload }}" >> $GITHUB_STEP_SUMMARY
+            echo "- **Limit:** ${{ inputs.limit || 'No limit' }}" >> $GITHUB_STEP_SUMMARY
+            echo "- **Workers:** ${{ inputs.workers }}" >> $GITHUB_STEP_SUMMARY
+          fi
