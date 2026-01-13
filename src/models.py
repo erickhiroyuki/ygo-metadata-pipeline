@@ -20,6 +20,14 @@ class RawCard(BaseModel):
     race: str | None = None
     archetype: str | None = None
     card_sets: list[dict[str, Any]] | None = None
+    # New card detail fields
+    pend_desc: str | None = None
+    monster_desc: str | None = None
+    atk: int | None = None
+    def_: int | None = Field(default=None, alias="def")
+    level: int | None = None
+    attribute: str | None = None
+    scale: int | None = None
 
     model_config = {"populate_by_name": True}
 
@@ -33,6 +41,16 @@ class CardMetadata(BaseModel):
     race: str | None = None
     archetype: str | None = None
     details: list[dict[str, Any]] = Field(default_factory=list)
+    # New card detail fields
+    pend_desc: str | None = None
+    monster_desc: str | None = None
+    atk: int | None = None
+    def_: int | None = Field(default=None, alias="def")
+    level: int | None = None
+    attribute: str | None = None
+    scale: int | None = None
+
+    model_config = {"populate_by_name": True}
 
     @classmethod
     def from_raw(cls, raw: RawCard) -> "CardMetadata":
@@ -45,6 +63,13 @@ class CardMetadata(BaseModel):
             race=raw.race,
             archetype=raw.archetype,
             details=raw.card_sets or [],
+            pend_desc=raw.pend_desc,
+            monster_desc=raw.monster_desc,
+            atk=raw.atk,
+            def_=raw.def_,
+            level=raw.level,
+            attribute=raw.attribute,
+            scale=raw.scale,
         )
 
 

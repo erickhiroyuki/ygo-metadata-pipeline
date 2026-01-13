@@ -115,7 +115,7 @@ def batch_upsert(
 
     for i in range(0, total, batch_size):
         batch = records[i : i + batch_size]
-        batch_data = [r.model_dump() for r in batch]
+        batch_data = [r.model_dump(by_alias=True) for r in batch]
         batch_num = (i // batch_size) + 1
         total_batches = (total + batch_size - 1) // batch_size
 
@@ -133,7 +133,7 @@ def batch_upsert(
             for record in batch:
                 try:
                     client.table(table).upsert(
-                        record.model_dump(),
+                        record.model_dump(by_alias=True),
                         on_conflict=conflict_columns,
                     ).execute()
                     successful += 1
