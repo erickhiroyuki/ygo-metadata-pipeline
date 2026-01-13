@@ -3,7 +3,7 @@ import argparse
 import sys
 
 from src.logging import setup_logging
-from src.pipelines import run_sync_cards, run_sync_images
+from src.pipelines import run_sync_banlist, run_sync_cards, run_sync_images
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -19,6 +19,7 @@ Examples:
   uv run main.py sync-cards --skip-translations   # Sync metadata only
   uv run main.py sync-images                   # Sync images to S3
   uv run main.py sync-images --force -l 100    # Force re-upload first 100
+  uv run main.py sync-banlist                  # Sync TCG banlist data
         """,
     )
 
@@ -77,6 +78,11 @@ Examples:
         help="Number of parallel workers for uploading (default: 10)",
     )
 
+    subparsers.add_parser(
+        "sync-banlist",
+        help="Sync banlist data (Forbidden/Limited/Semi-Limited) from YGOProDeck API",
+    )
+
     return parser
 
 
@@ -103,6 +109,11 @@ def cmd_sync_images(args: argparse.Namespace) -> int:
     return 1 if result.failed > 0 else 0
 
 
+def cmd_sync_banlist(args: argparse.Namespace) -> int:
+    result = run_sync_banlist()
+    return 1 if result.failed > 0 else 0
+
+
 def main() -> int:
     parser = create_parser()
     args = parser.parse_args()
@@ -115,6 +126,7 @@ def main() -> int:
     setup_logging(level=log_level, json_format=args.json_logs)
 
     commands = {
+        "sync-banlist": cmd_sync_banlist,
         "sync-cards": cmd_sync_cards,
         "sync-images": cmd_sync_images,
     }
