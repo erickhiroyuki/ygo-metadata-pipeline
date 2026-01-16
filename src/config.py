@@ -32,6 +32,7 @@ class PipelineConfig:
 class APIConfig:
     ygoprodeck_base_url: str = "https://db.ygoprodeck.com/api/v7/cardinfo.php"
     ygoprodeck_image_template: str = "https://images.ygoprodeck.com/images/cards_small/{card_id}.jpg"
+    ygoprodeck_cropped_image_template: str = "https://images.ygoprodeck.com/images/cards_cropped/{card_id}.jpg"
 
 
 @dataclass(frozen=True)

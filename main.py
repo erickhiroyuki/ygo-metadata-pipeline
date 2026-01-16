@@ -3,7 +3,7 @@ import argparse
 import sys
 
 from src.logging import setup_logging
-from src.pipelines import run_sync_banlist, run_sync_cards, run_sync_images
+from src.pipelines import run_sync_banlist, run_sync_cards, run_sync_cropped_images, run_sync_images
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -78,6 +78,31 @@ Examples:
         help="Number of parallel workers for uploading (default: 10)",
     )
 
+    cropped_images_parser = subparsers.add_parser(
+        "sync-cropped-images",
+        help="Sync cropped card images from YGOProDeck to AWS S3 (with 40% size reduction)",
+    )
+    cropped_images_parser.add_argument(
+        "--force",
+        "-f",
+        action="store_true",
+        help="Force re-upload of all cropped images, even if they already exist in S3",
+    )
+    cropped_images_parser.add_argument(
+        "--limit",
+        "-l",
+        type=int,
+        default=None,
+        help="Limit the number of cards to process (useful for testing)",
+    )
+    cropped_images_parser.add_argument(
+        "--workers",
+        "-w",
+        type=int,
+        default=None,
+        help="Number of parallel workers for uploading (default: 10)",
+    )
+
     subparsers.add_parser(
         "sync-banlist",
         help="Sync banlist data (Forbidden/Limited/Semi-Limited) from YGOProDeck API",
@@ -109,6 +134,16 @@ def cmd_sync_images(args: argparse.Namespace) -> int:
     return 1 if result.failed > 0 else 0
 
 
+def cmd_sync_cropped_images(args: argparse.Namespace) -> int:
+    result = run_sync_cropped_images(
+        force=args.force,
+        limit=args.limit,
+        workers=args.workers,
+    )
+
+    return 1 if result.failed > 0 else 0
+
+
 def cmd_sync_banlist(args: argparse.Namespace) -> int:
     result = run_sync_banlist()
     return 1 if result.failed > 0 else 0
@@ -128,6 +163,7 @@ def main() -> int:
     commands = {
         "sync-banlist": cmd_sync_banlist,
         "sync-cards": cmd_sync_cards,
+        "sync-cropped-images": cmd_sync_cropped_images,
         "sync-images": cmd_sync_images,
     }
 

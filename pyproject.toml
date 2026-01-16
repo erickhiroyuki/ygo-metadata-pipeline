@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "boto3>=1.42.22",
+    "pillow>=10.0.0",
     "pydantic>=2.0.0",
     "python-decouple>=3.8",
     "requests>=2.32.5",
