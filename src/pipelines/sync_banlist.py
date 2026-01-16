@@ -13,7 +13,6 @@ logger = get_logger("sync_banlist")
 
 
 class BanlistInfo(BaseModel):
-    """Banlist information for a card."""
 
     ban_tcg: str | None = None
     ban_ocg: str | None = None
@@ -21,7 +20,6 @@ class BanlistInfo(BaseModel):
 
 
 class CardBanlistEntry(BaseModel):
-    """A single card's banlist entry."""
 
     card_id: int
     card_name: str
@@ -31,24 +29,55 @@ class CardBanlistEntry(BaseModel):
 
 
 def fetch_banlist_from_api() -> list[dict[str, Any]]:
-    """Fetch cards with banlist info from YGOProDeck API."""
     settings = get_settings()
-    url = f"{settings.api.ygoprodeck_base_url}?banlist=tcg"
-
-    logger.info("Fetching banlist data from YGOProDeck API...")
-
     session = create_http_session()
-    response = session.get(url, timeout=60)
-    response.raise_for_status()
-    data = response.json()
 
-    cards = data.get("data", [])
-    logger.info(f"Successfully fetched {len(cards):,} cards from banlist API")
-    return cards
+    tcg_url = f"{settings.api.ygoprodeck_base_url}?banlist=tcg"
+    logger.info("Fetching TCG banlist data from YGOProDeck API...")
+
+    response = session.get(tcg_url, timeout=60)
+    response.raise_for_status()
+    tcg_data = response.json()
+    tcg_cards = tcg_data.get("data", [])
+    logger.info(f"Successfully fetched {len(tcg_cards):,} cards from TCG banlist")
+
+    cards_by_id: dict[int, dict[str, Any]] = {}
+    for card in tcg_cards:
+        cards_by_id[card["id"]] = card
+
+    ocg_url = f"{settings.api.ygoprodeck_base_url}?banlist=ocg"
+    logger.info("Fetching OCG banlist data from YGOProDeck API...")
+
+    response = session.get(ocg_url, timeout=60)
+    response.raise_for_status()
+    ocg_data = response.json()
+    ocg_cards = ocg_data.get("data", [])
+    logger.info(f"Successfully fetched {len(ocg_cards):,} cards from OCG banlist")
+
+    ocg_only_count = 0
+    for card in ocg_cards:
+        card_id = card["id"]
+        if card_id in cards_by_id:
+            existing_card = cards_by_id[card_id]
+            existing_banlist = existing_card.get("banlist_info", {}) or {}
+            ocg_banlist = card.get("banlist_info", {}) or {}
+
+            merged_banlist = {**existing_banlist}
+            if "ban_ocg" in ocg_banlist:
+                merged_banlist["ban_ocg"] = ocg_banlist["ban_ocg"]
+
+            existing_card["banlist_info"] = merged_banlist
+        else:
+            cards_by_id[card_id] = card
+            ocg_only_count += 1
+
+    logger.info(f"Found {ocg_only_count:,} cards that are only in OCG banlist")
+    logger.info(f"Total unique cards with banlist info: {len(cards_by_id):,}")
+
+    return list(cards_by_id.values())
 
 
 def extract_banlist_entries(raw_cards: list[dict[str, Any]]) -> list[CardBanlistEntry]:
-    """Extract banlist information from raw card data."""
     logger.info(f"Processing {len(raw_cards):,} cards for banlist entries...")
 
     entries = []
@@ -69,7 +98,6 @@ def extract_banlist_entries(raw_cards: list[dict[str, Any]]) -> list[CardBanlist
 
     logger.info(f"Found {len(entries):,} cards with banlist restrictions")
 
-    # Log summary by status
     tcg_forbidden = sum(1 for e in entries if e.ban_tcg == "Forbidden")
     tcg_limited = sum(1 for e in entries if e.ban_tcg == "Limited")
     tcg_semi_limited = sum(1 for e in entries if e.ban_tcg == "Semi-Limited")
@@ -83,7 +111,6 @@ def extract_banlist_entries(raw_cards: list[dict[str, Any]]) -> list[CardBanlist
 
 
 def batch_upsert_banlist(entries: list[CardBanlistEntry]) -> tuple[int, int]:
-    """Upsert banlist entries to the database."""
     settings = get_settings()
     client = get_supabase_client()
     batch_size = settings.pipeline.batch_size
@@ -111,7 +138,6 @@ def batch_upsert_banlist(entries: list[CardBanlistEntry]) -> tuple[int, int]:
             failed += len(batch)
             logger.error(f"Batch {batch_num}/{total_batches}: Failed to upsert - {e}")
 
-            # Retry individual records on batch failure
             for entry in batch:
                 try:
                     client.table("ygo_banlist").upsert(
@@ -130,24 +156,19 @@ def batch_upsert_banlist(entries: list[CardBanlistEntry]) -> tuple[int, int]:
 
 
 def run_sync_banlist() -> SyncResult:
-    """Run the banlist synchronization pipeline."""
     start_time = time.time()
 
     logger.info("=" * 60)
     logger.info("Starting YGO Banlist Sync")
     logger.info("=" * 60)
 
-    # Fetch data from API
     raw_cards = fetch_banlist_from_api()
-
-    # Extract banlist entries
     entries = extract_banlist_entries(raw_cards)
 
     if not entries:
         logger.warning("No banlist entries to process. Exiting.")
         return SyncResult(total=0, successful=0, failed=0)
 
-    # Upsert to database
     successful, failed = batch_upsert_banlist(entries)
 
     elapsed = time.time() - start_time
